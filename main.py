@@ -7,7 +7,7 @@ def constrain(val, min_val, max_val):
     return max(min_val, min(max_val, val))
 
 class PIDController:
-    def __init__(self, set_value=25.0, k_p=4.0, k_i=1.0, k_d=0.1, cycle=10.0, valve=60.0, dead_zone=5.0):
+    def __init__(self, set_value=30.0, k_p=0.4, k_i=0.1, k_d=0.1, cycle=2.0, valve=60.0, dead_zone=2.0):
         # Ініціалізація змінних
         self.SET_VALUE = set_value
         self.K_P = k_p
@@ -63,6 +63,7 @@ class PIDController:
                 self.ds_sensor.convert_temp()
                 time.sleep(1)  # Затримка для зчитування температури
                 temp = self.ds_sensor.read_temp(self.roms[0])
+                
                 if temp is not None:
                     return temp
         except Exception as e:
