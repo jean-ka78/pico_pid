@@ -1,73 +1,47 @@
 import time
+import config
+import wifi_config
 from machine import Pin
-import ds18x20
 import onewire
-
-def constrain(val, min_val, max_val):
-    return max(min_val, min(max_val, val))
+import ds18x20
 
 class PIDController:
-    def __init__(self, set_value=25.0, k_p=4.0, k_i=1.0, k_d=0.1, cycle=10.0, valve=60.0, dead_zone=5.0):
-        # Ініціалізація змінних
-        self.SET_VALUE = set_value
-        self.K_P = k_p
-        self.K_I = k_i
-        self.K_D = k_d
-        self.CYCLE = cycle
-        self.VALVE = valve
-        self.DEAD_ZONE = dead_zone
+    def __init__(self):
+        # Ініціалізація конфігурації
+        self.SET_VALUE = config.SET_VALUE
+        self.K_P = config.K_P
+        self.K_I = config.K_I
+        self.K_D = config.K_D
+        self.CYCLE = config.CYCLE
+        self.VALVE = config.VALVE
+        self.DEAD_ZONE = config.DEAD_ZONE
 
-        # Ініціалізація змінних для ПІД-регулятора
-        self.E_1 = 0.0
-        self.E_2 = 0.0
-        self.E_3 = 0.0
-        self.SUM_D_T = 0.0
-        self.TIMER_PID = 0.0
-        self.TIMER_PID_UP = 0.0
-        self.TIMER_PID_DOWN = 0.0
-        self.PID_PULSE = 0
-        self.HAND_UP = False
-        self.HAND_DOWN = False
-        self.ON_OFF = True
-        self.AUTO_HAND = True
-        self.PULSE_100MS = 0
-        self.TIMER_100MS = 0.0
-        self.MILLIS_FLOAT_1 = 0.0
-        self.MILLIS_FLOAT_VALVE = 0.0
-        self.D_T = 0.0
-        self.UP = False
-        self.DOWN = False
+        # Ініціалізація пінів
+        self.RELAY_UP_PIN = Pin(config.RELAY_UP_PIN, Pin.OUT)
+        self.RELAY_DOWN_PIN = Pin(config.RELAY_DOWN_PIN, Pin.OUT)
 
-        # Налаштування GPIO
-        self.RELAY_UP_PIN = Pin(3, Pin.OUT)
-        self.RELAY_DOWN_PIN = Pin(4, Pin.OUT)
+        # Ініціалізація Wi-Fi
+        self.wifi = wifi_config.connect_wifi(config.SSID, config.PASSWORD)
 
-        # Ініціалізація датчика DS18B20
-        self.ds_pin = Pin(21)
-        self.ds_sensor = ds18x20.DS18X20(onewire.OneWire(self.ds_pin))
+        # Ініціалізація сенсора
+        self.ds_sensor = onewire.OneWire(Pin(config.SENSOR_PIN))
         self.roms = self.ds_sensor.scan()
-        if self.roms:
-            self.sensor_available = True
-            self.PRESENT_VALUE = self.read_temperature()  # Ініціалізація температури
-        else:
-            self.sensor_available = False
-            self.PRESENT_VALUE = 0.0
+        self.sensor_available = len(self.roms) > 0
+        self.PRESENT_VALUE = 0.0
 
-        # Ініціалізація часу старту
         self.start_time = time.time()
 
     def read_temperature(self):
-        # Зчитування температури з датчика DS18B20
         try:
             if self.sensor_available:
                 self.ds_sensor.convert_temp()
-                time.sleep(1)  # Затримка для зчитування температури
+                time.sleep(1)
                 temp = self.ds_sensor.read_temp(self.roms[0])
                 if temp is not None:
                     return temp
         except Exception as e:
             print(f"Error reading temperature: {e}")
-        return 0.0  # Повертаємо значення за замовчуванням у разі помилки або відсутності сенсора
+        return 0.0
 
     def run(self):
         try:
@@ -79,10 +53,10 @@ class PIDController:
                 self.print_status()
                 time.sleep(0.01)
         except KeyboardInterrupt:
-            print("Программа завершена пользователем")
+            print("Program interrupted by user")
 
     def update(self):
-        MILLIS_FLOAT = float(time.ticks_ms())
+        MILLIS_FLOAT = float(time.time() * 1000)
         MILLIS_FLOAT_SEK = MILLIS_FLOAT / 1000.0
 
         self.E_1 = self.SET_VALUE - self.PRESENT_VALUE
@@ -100,7 +74,7 @@ class PIDController:
         if self.TIMER_PID == 0.0 and not self.PID_PULSE:
             self.PID_PULSE = 1
             self.MILLIS_FLOAT_1 = MILLIS_FLOAT_SEK
-            self.D_T = self.K_P * (self.E_1 - self.E_2 + self.CYCLE * self.E_2 / self.K_I + 
+            self.D_T = self.K_P * (self.E_1 - self.E_2 + self.CYCLE * self.E_2 / self.K_I +
                                    self.K_D * (self.E_1 - 2 * self.E_2 + self.E_3) / self.CYCLE) * self.VALVE / 100.0
             self.E_3 = self.E_2
             self.E_2 = self.E_1
@@ -164,8 +138,6 @@ class PIDController:
 
     def print_status(self):
         elapsed_time = time.time() - self.start_time
-        print(f"E_1: {self.E_1:.2f}, D_T: {self.D_T:.2f}, SUM_D_T: {self.SUM_D_T:.2f}, TIMER_PID_UP: {self.TIMER_PID_UP:.2f}, TIMER_PID_DOWN: {self.TIMER_PID_DOWN:.2f}, UP: {self.UP}, DOWN: {self.DOWN}, Elapsed Time: {elapsed_time:.2f} sec")
-
-if __name__ == "__main__":
-    controller = PIDController()
-    controller.run()
+        print(f"E_1: {self.E_1:.2f}, D_T: {self.D_T:.2f}, SUM_D_T: {self.SUM_D_T:.2f}, "
+              f"TIMER_PID_UP: {self.TIMER_PID_UP:.2f}, TIMER_PID_DOWN: {self.TIMER_PID_DOWN:.2f}, "
+              f"UP: {self.UP}, DOWN: {self.DOWN}, Elapsed Time: {elapsed_time:.2f} sec")
